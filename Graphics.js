@@ -20,7 +20,7 @@ var graphics_render = function(canvas, width, height)
 
     this.render = function(display)
     {
-        for (i = 0; i < display.length; i++) 
+        for (i = 0; i < display.length; i++)
         {
             if(display[i] == 0)
             {
