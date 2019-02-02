@@ -3,7 +3,7 @@ var Processor = new function()
     this.Memory = new Uint8Array(4096); // Stores instructions
     this.Memory[0] = ("0x0000" & "0xFF00") >>> 8;
     this.Memory[1] = ("0x0000" & "0x00FF");
-    this.Memory[2] = ("0x00E0" & "0xFF00") >>> 8;
+    this.Memory[2] = ("0x00E0" & "0xFF00") >>> 8; // ClearDisplay
     this.Memory[3] = ("0x00E0" & "0x00FF");
     this.Memory[4] = ("0x1000" & "0xFF00") >>> 8;
     this.Memory[5] = ("0x1000" & "0x00FF");
@@ -11,6 +11,15 @@ var Processor = new function()
     this.Memory[7] = ("0x2000" & "0x00FF");
     this.Memory[8] = ("0x3000" & "0xFF00") >>> 8; // SkipNextInstruction_VxEQkk
     this.Memory[9] = ("0x3000" & "0x00FF");
+
+    this.Memory[40] = ("0xA000" & "0xF000") >>> 8; // SetItoNNN
+    this.Memory[41] = ("0x0000" & "0x0000");
+    this.Memory[42] = ("0xB000" & "0xF000") >>> 8; // JumptoAddressAddV0
+    this.Memory[43] = ("0x0000" & "0x0000");
+    this.Memory[44] = ("0xC000" & "0xF000") >>> 8;
+    this.Memory[45] = ("0x0000" & "0x0000");
+    this.Memory[46] = ("0xD000" & "0xF000") >>> 8; // DrawGraphics
+    this.Memory[47] = ("0x0000" & "0x0000");
 
     this.Memory[48] = ("0xE000" & "0xF000") >>> 8; // SkipNextInstruction_KeyDown
     this.Memory[49] = ("0x009E" & "0x00FF");
@@ -57,14 +66,16 @@ var Processor = new function()
     {
         this.Registers[0] = 180;
         this.Registers[1] = 6;
-        this.ISpecial = 100;
+        this.Registers[2] = 9;
+        this.ISpecial = 80;
 
         // Loads the fontset into the memory
         for(i = 0; i < fontset.length; i++)
         {
             this.Memory[70 + i] = fontset[i];
         }
-        this.clear_display();
+
+        this.clear_display(); // Clears the display
     };
 
     this.fetch = function() // Fetches from the program stored in the memory
@@ -88,6 +99,38 @@ var Processor = new function()
                     }
                     break;
                 }
+                else if (i == 40) // SetItoNNN
+                {
+                    this.ISpecial = (opcode & "0x0FFF");
+                    console.log("VI: " + this.ISpecial);
+                }
+                else if (i == 42) // JumptoAddressAddV0
+                {
+                    this.PC = (opcode & "0x0FFF") + this.Registers[0];
+                    console.log("PC: " + this.PC);
+                }
+                else if (i == 46) // DrawGraphics
+                {
+                    this.display_test(opcode);
+                    graphics.render(this.display); // May be bad to use a variable from another file
+                }
+
+                else if (i >= 0 && i <= 5) // 0x0000 opcodes
+                {
+                    if ((opcode & "0xFF00") >>> 8 == this.Memory[i] && (opcode & "0x00FF") == this.Memory[i + 1])
+                    {
+                        if (i == 2) // ClearDisplay
+                        {
+                            this.clear_display();
+                        }
+                        else (i == 4) // 00EE opcode
+                        {
+                        }
+                    }
+                    else // 0NNN opcode
+                    {
+                    }
+                }
 
                 else if (i >= 48 && i <= 51) // 0xE000 opcodes
                 {
@@ -99,11 +142,9 @@ var Processor = new function()
                             var convertHex = function(code) // Converts a hexadecimal into a keyboard input
                             {
                                 var key_code =
-                                [
-                                    49, 50, 51, 52, 81, 87,
+                                [49, 50, 51, 52, 81, 87,
                                     69, 82, 65, 83, 68, 70,
-                                    90, 88, 67, 86
-                                ];
+                                    90, 88, 67, 86];
                                 for(i = 0; i < 16; i++)
                                 {
                                     if(code == i)
@@ -127,11 +168,9 @@ var Processor = new function()
                             var convertHex = function(code) // Converts a hexadecimal into a keyboard input
                             {
                                 var key_code =
-                                [
-                                    49, 50, 51, 52, 81, 87,
+                                [49, 50, 51, 52, 81, 87,
                                     69, 82, 65, 83, 68, 70,
-                                    90, 88, 67, 86
-                                ];
+                                    90, 88, 67, 86];
                                 for(i = 0; i < 16; i++)
                                 {
                                     if(code == i)
@@ -221,13 +260,17 @@ var Processor = new function()
                             this.soundTimer = this.Registers[((opcode & "0x0F00") >>> 8)];
                             break;
                         }
-                        else if(i == 60) // AddVxIStore
+                        else if (i == 60) // AddVxIStore
                         {
                         	var Vx = this.Registers[((opcode & "0x0F00") >>> 8)];
                             var VI = this.ISpecial;
                             this.ISpecial = VI + Vx;
                             console.log("VI: " + this.ISpecial);
                             break;
+                        }
+                        else if (i == 62) // SetSpriteLocation
+                        {
+                            this.sprite_loc(opcode);
                         }
                         else if (i == 64) // StoreBCDRepVx
                         {
@@ -263,6 +306,17 @@ var Processor = new function()
                             console.log("VI: " + this.ISpecial);
                             break;
                         }
+                        else if (i == 68) // ReadMemoryWriteV0Vx
+                        {
+                            for (i = 0; i <= (opcode & "0x0F00") >>> 8; i++)
+                            {
+                                this.Registers[i] = this.Memory[this.ISpecial + i];
+                                console.log("V" + i + ": " + this.Registers[i]);
+                            }
+                            this.ISpecial += ((opcode & "0x0F00") >>> 8) + 1;
+                            console.log("VI: " + this.ISpecial);
+                            break;
+                        }
                     }
                     else
                     {
@@ -291,10 +345,12 @@ var Processor = new function()
         //console.log("DT: " + this.delayTimer);
     };
 
-    this.display_test = function(test_opcode) //DXYN opcode implementation
+    this.display_test = function(test_opcode) // DXYN opcode implementation
     {
-        var x_position = (test_opcode & 0x0F00) >> 8; // it really should be this.Registers[(test_opcode & 0x0F00) >> 8]; I didnt use this because it is easier to test
-        var y_position = (test_opcode & 0x00F0) >> 4; // it really should be this.Registers[(test_opcode & 0x00F0) >> 4]; I didnt use this because it is easier to test
+        var x_position = (test_opcode & 0x0F00) >>> 8;
+        var y_position = (test_opcode & 0x00F0) >>> 4;
+        //var x_position = this.Registers[(test_opcode & 0x0F00) >>> 8]; // Should be this instead
+        //var y_position = this.Registers[(test_opcode & 0x00F0) >>> 4]; // Should be this instead
         var N = (test_opcode & 0x000F);
         this.Registers[0xF] = 0; // MAYBE JUST USE NORMAL NUMBERS
 
@@ -318,37 +374,24 @@ var Processor = new function()
             }
         }
 
-        this.PC += 2; // WHY INCREASE PC?
+        //this.PC += 2;
         console.log("Display test completed!");
     }
-    this.sprite_loc = function(test_opcode) //FX29 implementation
+    this.sprite_loc = function(test_opcode) // FX29 implementation
     {
-        //Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
-        var sprite_value = this.Registers[(test_opcode & 0x0F00) >> 8];
+        // Sets I to the location of the sprite for the character in Vx. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
+        var sprite_value = this.Registers[(test_opcode & 0x0F00) >>> 8];
         this.ISpecial = 70 + (sprite_value * 5 );
-        console.log("the fontset is:" + sprite_value + "|" +"the fontset location is:" + this.ISpecial);
-        this.PC += 2;     
+        console.log("The fontset is: " + sprite_value + ", and the fontset location is: " + this.ISpecial);
+        //this.PC += 2;     
     }
-    this.clear_display = function() //00E0 opcode implementation 
+    this.clear_display = function() // 00E0 opcode implementation 
     {
         for (i = 0; i < this.display.length; i++)
         {
             this.display[i] = 0;
         }
-    }
-    this.get_display_width = function() // Get display methods
-    {
-        return this.display_width;
-    }
-
-    this.get_display_height = function()
-    {
-        return this.display_height;
-    }
-
-    this.get_display = function()
-    {
-        return this.display;
+        console.log("Cleared the display!");
     }
 
     this.main = function()
